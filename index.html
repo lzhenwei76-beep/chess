@@ -71,6 +71,7 @@
         .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); }
         .btn-danger { background: #e74c3c; }
         .btn-success { background: #2ecc71; }
+        .btn-warning { background: #f39c12; color: black; }
         
         .lobby-item {
             background: #232931;
@@ -161,13 +162,29 @@
         }
         .toast.show { transform: translateX(0); }
         
-        .debug-btn {
-            background: #f39c12;
-            color: black;
-            padding: 5px 10px;
-            border-radius: 5px;
+        .debug-panel {
+            margin-top: 20px;
+            padding: 15px;
+            background: #1a1e24;
+            border-radius: 12px;
+            border-left: 4px solid #f39c12;
+        }
+        .debug-panel h4 {
+            color: #f39c12;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .debug-log {
+            background: #0f1115;
+            padding: 10px;
+            border-radius: 8px;
+            color: #e1e9f0;
+            font-family: monospace;
             font-size: 0.8em;
-            margin-left: 10px;
+            max-height: 150px;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -199,12 +216,24 @@
                 <button id="saveNameBtn" class="btn btn-primary">Name speichern</button>
                 <button id="createRoomBtn" class="btn btn-primary" style="margin-top: 10px;">🌍 Öffentliches Spiel erstellen</button>
                 
-                <!-- DEBUG BUTTON -->
-                <button id="debugMoveBtn" class="btn btn-success" style="margin-top: 10px;">🐞 DEBUG: Probezug ausführen</button>
+                <!-- DEBUG PANEL -->
+                <div class="debug-panel">
+                    <h4>🐞 DEBUG KONSOLE</h4>
+                    <div class="debug-log" id="debugLog">
+                        [System] Debug-Modus aktiv<br>
+                        [System] Klicke auf Figuren zum Bewegen<br>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                        <button id="debugMoveE4Btn" class="btn btn-warning" style="margin-bottom: 0;">♙ e2->e4</button>
+                        <button id="debugMoveKnightBtn" class="btn btn-warning" style="margin-bottom: 0;">♘ g1->f3</button>
+                        <button id="debugClearSelectionBtn" class="btn" style="background: #7f8c8d; margin-bottom: 0;">🗑️ Auswahl löschen</button>
+                        <button id="debugShowMovesBtn" class="btn" style="background: #3498db; margin-bottom: 0;">👁️ Zeige alle Züge</button>
+                    </div>
+                </div>
                 
-                <div style="margin-top: 30px;">
+                <div style="margin-top: 20px;">
                     <h3 style="color: white; margin-bottom: 15px;">🟢 Verfügbare Spiele</h3>
-                    <div id="lobbyList" style="max-height: 400px; overflow-y: auto;"></div>
+                    <div id="lobbyList" style="max-height: 300px; overflow-y: auto;"></div>
                 </div>
                 
                 <div id="currentRoomCard" style="display: none; margin-top: 20px; background: #232931; padding: 15px; border-radius: 12px;">
@@ -279,7 +308,36 @@
         const db = firebase.database();
 
         // =========================================
-        // SCHACH ENGINE
+        // DEBUG LOGGER
+        // =========================================
+        class DebugLogger {
+            constructor() {
+                this.logElement = document.getElementById('debugLog');
+                this.logs = [];
+            }
+
+            log(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'move' ? '🎯' : '🔍';
+                const logMessage = `[${timestamp}] ${prefix} ${message}`;
+                
+                this.logs.push(logMessage);
+                if (this.logs.length > 8) this.logs.shift();
+                
+                this.logElement.innerHTML = this.logs.map(log => log).join('<br>');
+                console.log(`${prefix} ${message}`);
+            }
+
+            clear() {
+                this.logs = [];
+                this.logElement.innerHTML = '[System] Debug-Log geleert<br>';
+            }
+        }
+
+        const debug = new DebugLogger();
+
+        // =========================================
+        // SCHACH ENGINE - FIXED
         // =========================================
         class ChessEngine {
             constructor() {
@@ -303,11 +361,6 @@
                 this.gameOver = false;
                 this.moveHistory = [];
                 this.capturedPieces = { w: [], b: [] };
-                this.enPassantTarget = null;
-                this.castlingRights = {
-                    w: { kingMoved: false, rookLeftMoved: false, rookRightMoved: false },
-                    b: { kingMoved: false, rookLeftMoved: false, rookRightMoved: false }
-                };
             }
 
             getPieceColor(piece) {
@@ -357,13 +410,17 @@
                 const direction = color === 'w' ? -1 : 1;
                 const startRow = color === 'w' ? 6 : 1;
 
+                // Ein Schritt vorwärts
                 if (this.isInBounds(row + direction, col) && !this.board[row + direction][col]) {
                     moves.push({ row: row + direction, col });
+                    
+                    // Zwei Schritte vom Start
                     if (row === startRow && !this.board[row + 2 * direction][col]) {
                         moves.push({ row: row + 2 * direction, col });
                     }
                 }
 
+                // Schlagen diagonal
                 for (const dCol of [-1, 1]) {
                     const newRow = row + direction;
                     const newCol = col + dCol;
@@ -557,55 +614,52 @@
             }
 
             // -------------------------
-            // MAKE MOVE - FIXED VERSION
+            // MAKE MOVE - SIMPLE & ROBUST
             // -------------------------
             makeMove(fromRow, fromCol, toRow, toCol) {
-                console.log(`🔄 makeMove called: (${fromRow},${fromCol}) -> (${toRow},${toCol})`);
+                debug.log(`makeMove: (${fromRow},${fromCol}) -> (${toRow},${toCol})`, 'move');
                 
                 // Prüfe ob Figur existiert
                 const piece = this.board[fromRow][fromCol];
                 if (!piece) {
-                    console.error('❌ No piece at start position');
-                    return { success: false, error: 'Keine Figur ausgewählt' };
+                    debug.log(`Keine Figur bei (${fromRow},${fromCol})`, 'error');
+                    return { success: false, error: 'Keine Figur' };
                 }
                 
-                // Prüfe ob Figur dem aktuellen Spieler gehört
+                // Prüfe Farbe
                 if (this.getPieceColor(piece) !== this.currentPlayer) {
-                    console.error(`❌ Wrong color: ${this.getPieceColor(piece)} vs ${this.currentPlayer}`);
+                    debug.log(`Falsche Farbe: ${this.getPieceColor(piece)} vs ${this.currentPlayer}`, 'error');
                     return { success: false, error: 'Nicht deine Figur' };
                 }
                 
-                // Prüfe ob Zug gültig ist
+                // Prüfe gültigen Zug
                 const moves = this.getValidMoves(fromRow, fromCol);
-                const move = moves.find(m => m.row === toRow && m.col === toCol);
+                const isValid = moves.some(m => m.row === toRow && m.col === toCol);
                 
-                if (!move) {
-                    console.error('❌ Invalid move');
-                    console.log('Valid moves:', moves);
+                if (!isValid) {
+                    debug.log(`Ungültiger Zug nach (${toRow},${toCol})`, 'error');
                     return { success: false, error: 'Ungültiger Zug' };
                 }
                 
-                console.log('✅ Valid move found:', move);
-                
-                const pieceColor = this.getPieceColor(piece);
-                const pieceType = this.getPieceType(piece);
+                // Figur bewegen
                 const targetPiece = this.board[toRow][toCol];
                 
                 // Geschlagene Figur speichern
                 if (targetPiece) {
-                    this.capturedPieces[pieceColor === 'w' ? 'b' : 'w'].push(targetPiece);
-                    console.log(`📦 Captured: ${targetPiece}`);
+                    const capturedColor = this.getPieceColor(piece) === 'w' ? 'b' : 'w';
+                    this.capturedPieces[capturedColor].push(targetPiece);
+                    debug.log(`Figur geschlagen: ${targetPiece}`, 'success');
                 }
                 
-                // Figur bewegen
+                // Bewegung ausführen
                 this.board[toRow][toCol] = piece;
                 this.board[fromRow][fromCol] = '';
-                console.log(`✅ Moved ${piece} to (${toRow},${toCol})`);
+                debug.log(`Figur bewegt: ${piece} nach (${toRow},${toCol})`, 'success');
                 
                 // Bauernumwandlung
-                if (pieceType === 'P' && (toRow === 0 || toRow === 7)) {
-                    this.board[toRow][toCol] = pieceColor === 'w' ? '♕' : '♛';
-                    console.log(`♕ Pawn promotion to Queen`);
+                if (this.getPieceType(piece) === 'P' && (toRow === 0 || toRow === 7)) {
+                    this.board[toRow][toCol] = this.getPieceColor(piece) === 'w' ? '♕' : '♛';
+                    debug.log(`Bauernumwandlung zur Dame`, 'success');
                 }
                 
                 // Zugnotation
@@ -613,28 +667,20 @@
                 const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
                 let notation = '';
                 
-                if (pieceType === 'P') {
+                if (this.getPieceType(piece) === 'P') {
                     if (targetPiece) notation += cols[fromCol];
                 } else {
-                    notation += pieceType;
+                    notation += this.getPieceType(piece);
                 }
                 if (targetPiece) notation += 'x';
                 notation += cols[toCol] + rows[toRow];
                 
                 this.moveHistory.push(notation);
-                console.log(`📝 Notation: ${notation}`);
+                debug.log(`Zugnotation: ${notation}`, 'info');
                 
                 // Spieler wechseln
                 this.currentPlayer = this.currentPlayer === 'w' ? 'b' : 'w';
-                console.log(`👤 Current player: ${this.currentPlayer}`);
-                
-                // Prüfe Spielende
-                if (this.isCheckmate(this.currentPlayer)) {
-                    this.gameOver = true;
-                    const winner = this.currentPlayer === 'w' ? 'Schwarz' : 'Weiß';
-                    console.log(`🏆 Checkmate! ${winner} wins`);
-                    return { success: true, gameOver: true, result: `${winner} gewinnt durch Schachmatt!` };
-                }
+                debug.log(`Spieler gewechselt: ${this.currentPlayer === 'w' ? 'Weiß' : 'Schwarz'}`, 'info');
                 
                 return { success: true, gameOver: false };
             }
@@ -692,6 +738,7 @@
                         localStorage.setItem('chess_name', name);
                         document.getElementById('playerNameDisplay').innerText = name;
                         this.toast('✅ Name gespeichert');
+                        debug.log(`Name gesetzt: ${name}`, 'success');
                     }
                 };
                 
@@ -699,8 +746,8 @@
                 document.getElementById('leaveRoomBtn').onclick = () => this.leaveRoom();
                 document.getElementById('resetGameBtn').onclick = () => this.resetGame();
                 
-                // DEBUG BUTTON - Führt einen Probezug aus
-                document.getElementById('debugMoveBtn').onclick = () => {
+                // DEBUG BUTTONS
+                document.getElementById('debugMoveE4Btn').onclick = () => {
                     if (!this.currentRoom) {
                         this.toast('❌ Erst Raum erstellen!');
                         return;
@@ -709,7 +756,7 @@
                         this.toast('❌ Du bist nicht am Zug!');
                         return;
                     }
-                    // Versuche Bauer von e2 (6,4) nach e4 (4,4) zu bewegen
+                    // Bauer von e2 (6,4) nach e4 (4,4)
                     const result = this.game.makeMove(6, 4, 4, 4);
                     if (result.success) {
                         this.isLocalMove = true;
@@ -718,9 +765,56 @@
                             lastUpdate: Date.now()
                         });
                         this.renderBoard();
-                        this.toast('✅ DEBUG: Bauer bewegt!');
+                        this.toast('✅ Bauer nach e4 bewegt!');
+                        debug.log('DEBUG: Bauer e2->e4 erfolgreich', 'success');
                     } else {
-                        this.toast(`❌ DEBUG: ${result.error}`);
+                        this.toast(`❌ ${result.error}`);
+                        debug.log(`DEBUG Fehler: ${result.error}`, 'error');
+                    }
+                };
+                
+                document.getElementById('debugMoveKnightBtn').onclick = () => {
+                    if (!this.currentRoom) {
+                        this.toast('❌ Erst Raum erstellen!');
+                        return;
+                    }
+                    if (this.game.currentPlayer !== this.playerColor) {
+                        this.toast('❌ Du bist nicht am Zug!');
+                        return;
+                    }
+                    // Springer von g1 (7,6) nach f3 (5,5)
+                    const result = this.game.makeMove(7, 6, 5, 5);
+                    if (result.success) {
+                        this.isLocalMove = true;
+                        this.roomRef.update({
+                            ...this.game.getState(),
+                            lastUpdate: Date.now()
+                        });
+                        this.renderBoard();
+                        this.toast('✅ Springer nach f3 bewegt!');
+                        debug.log('DEBUG: Springer g1->f3 erfolgreich', 'success');
+                    } else {
+                        this.toast(`❌ ${result.error}`);
+                        debug.log(`DEBUG Fehler: ${result.error}`, 'error');
+                    }
+                };
+                
+                document.getElementById('debugClearSelectionBtn').onclick = () => {
+                    this.game.selectedPiece = null;
+                    this.game.validMoves = [];
+                    this.renderBoard();
+                    this.toast('🗑️ Auswahl gelöscht');
+                    debug.log('Auswahl zurückgesetzt', 'info');
+                };
+                
+                document.getElementById('debugShowMovesBtn').onclick = () => {
+                    if (this.game.selectedPiece) {
+                        debug.log(`Aktuelle gültige Züge:`, 'info');
+                        this.game.validMoves.forEach(m => {
+                            debug.log(`  → (${m.row},${m.col})`, 'info');
+                        });
+                    } else {
+                        debug.log('Keine Figur ausgewählt', 'info');
                     }
                 };
                 
@@ -741,9 +835,11 @@
                         document.getElementById('statusDot').className = 'status-dot online';
                         document.getElementById('statusText').innerText = 'Verbunden';
                         this.initPresence();
+                        debug.log('Firebase verbunden', 'success');
                     } else {
                         document.getElementById('statusDot').className = 'status-dot offline';
                         document.getElementById('statusText').innerText = 'Offline';
+                        debug.log('Firebase Verbindung verloren', 'error');
                     }
                 });
                 
@@ -860,6 +956,7 @@
                 this.setupRoomListener();
                 this.renderBoard();
                 this.toast('🌍 Spiel erstellt! Warte auf Gegner...');
+                debug.log(`Raum erstellt: ${roomId}`, 'success');
             }
 
             async joinRoom(roomId) {
@@ -915,6 +1012,7 @@
                 this.setupRoomListener();
                 this.renderBoard();
                 this.toast('✅ Raum beigetreten!');
+                debug.log(`Raum beigetreten: ${roomId}`, 'success');
             }
 
             setupRoomListener() {
@@ -966,6 +1064,7 @@
                 
                 this.renderBoard();
                 if (!silent) this.toast('👋 Raum verlassen');
+                debug.log('Raum verlassen', 'info');
             }
 
             async resetGame() {
@@ -987,6 +1086,7 @@
                 });
                 
                 this.toast('✨ Neues Spiel gestartet!');
+                debug.log('Spiel zurückgesetzt', 'success');
             }
 
             renderBoard() {
@@ -1009,13 +1109,6 @@
                         
                         if (this.game.validMoves.some(m => m.row === r && m.col === c)) {
                             square.classList.add('possible-move');
-                        }
-                        
-                        if (this.game.isInCheck(this.game.currentPlayer === 'w' ? 'b' : 'w')) {
-                            const kingSymbol = this.game.currentPlayer === 'w' ? '♚' : '♔';
-                            if (piece === kingSymbol) {
-                                square.classList.add('check');
-                            }
                         }
                         
                         square.onclick = () => this.handleSquareClick(r, c);
@@ -1042,11 +1135,11 @@
                 document.getElementById('blackCard').classList.toggle('active', this.game.currentPlayer === 'b');
             }
 
-            // ---------------------------------
-            // HANDLE SQUARE CLICK - FIXED VERSION
-            // ---------------------------------
+            // -------------------------
+            // HANDLE SQUARE CLICK - FIXED
+            // -------------------------
             handleSquareClick(row, col) {
-                console.log(`🖱️ Click on (${row},${col})`);
+                debug.log(`Klick auf (${row},${col})`, 'info');
                 
                 if (!this.currentRoom) {
                     this.toast('🎮 Erst Raum erstellen/beitreten!');
@@ -1058,7 +1151,7 @@
                     return;
                 }
                 
-                // Prüfe ob Gegner da ist
+                // Prüfe Gegner asynchron
                 this.roomRef.once('value').then(async (snap) => {
                     const data = snap.val();
                     if (!data.players || !data.players.b) {
@@ -1066,7 +1159,7 @@
                         return;
                     }
                     
-                    // Prüfe ob Spieler am Zug ist
+                    // Prüfe Spieler am Zug
                     if (this.game.currentPlayer !== this.playerColor) {
                         this.toast('⏳ Du bist nicht am Zug!');
                         return;
@@ -1079,12 +1172,12 @@
                         if (piece && this.game.getPieceColor(piece) === this.playerColor) {
                             this.game.selectedPiece = { row, col };
                             this.game.validMoves = this.game.getValidMoves(row, col);
-                            console.log('✅ Selected piece at', row, col);
-                            console.log('Valid moves:', this.game.validMoves);
+                            debug.log(`Figur ausgewählt: ${piece} bei (${row},${col})`, 'success');
+                            debug.log(`${this.game.validMoves.length} gültige Züge gefunden`, 'info');
                             this.renderBoard();
-                            return;
                         }
-                    } 
+                        return;
+                    }
                     
                     // --- ZUG AUSFÜHREN ---
                     if (this.game.selectedPiece) {
@@ -1095,48 +1188,48 @@
                         if (row === fromRow && col === fromCol) {
                             this.game.selectedPiece = null;
                             this.game.validMoves = [];
+                            debug.log('Auswahl aufgehoben', 'info');
                             this.renderBoard();
                             return;
                         }
                         
-                        // Prüfe ob Zug gültig ist
+                        // Prüfe ob Zug gültig
                         const isValidMove = this.game.validMoves.some(m => m.row === row && m.col === col);
                         
                         if (isValidMove) {
-                            console.log(`🎯 Attempting move: (${fromRow},${fromCol}) -> (${row},${col})`);
+                            debug.log(`Versuche Zug: (${fromRow},${fromCol}) -> (${row},${col})`, 'move');
                             
                             // Zug ausführen
                             const result = this.game.makeMove(fromRow, fromCol, row, col);
                             
                             if (result.success) {
-                                console.log('✅ Move successful!');
                                 this.isLocalMove = true;
                                 
-                                // Firebase aktualisieren
+                                // Firebase updaten
                                 await this.roomRef.update({
                                     ...this.game.getState(),
                                     lastUpdate: Date.now()
                                 });
                                 
-                                // Auswahl zurücksetzen
+                                // Zurücksetzen
                                 this.game.selectedPiece = null;
                                 this.game.validMoves = [];
                                 
-                                // Board neu zeichnen
                                 this.renderBoard();
+                                debug.log('Zug erfolgreich ausgeführt!', 'success');
                                 
                                 if (result.gameOver) {
                                     this.toast(result.result);
                                 }
                             } else {
-                                console.error('❌ Move failed:', result.error);
+                                debug.log(`Zug fehlgeschlagen: ${result.error}`, 'error');
                                 this.toast(`❌ ${result.error}`);
                                 this.game.selectedPiece = null;
                                 this.game.validMoves = [];
                                 this.renderBoard();
                             }
                         } else {
-                            console.log('❌ Invalid move target');
+                            debug.log('Ungültiges Zielfeld', 'error');
                             this.toast('❌ Ungültiger Zug');
                             this.game.selectedPiece = null;
                             this.game.validMoves = [];
@@ -1147,7 +1240,7 @@
             }
 
             toast(msg) {
-                console.log('📢 Toast:', msg);
+                debug.log(`Toast: ${msg}`, 'info');
                 const toast = document.getElementById('toast');
                 toast.innerText = msg;
                 toast.classList.add('show');
