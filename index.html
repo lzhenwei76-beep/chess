@@ -43,6 +43,7 @@
         }
         .online { background: #2ecc71; box-shadow: 0 0 10px #2ecc71; animation: pulse 2s infinite; }
         .offline { background: #e74c3c; box-shadow: 0 0 10px #e74c3c; }
+        .connecting { background: #f39c12; box-shadow: 0 0 10px #f39c12; animation: pulse 1s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         
         .lobby-layout {
@@ -83,6 +84,10 @@
             align-items: center;
             border-left: 4px solid #2ecc71;
         }
+        .lobby-item.full {
+            border-left-color: #e74c3c;
+            opacity: 0.7;
+        }
         .join-btn {
             background: #2ecc71;
             border: none;
@@ -93,6 +98,10 @@
             cursor: pointer;
         }
         .join-btn:hover { background: #27ae60; }
+        .join-btn.disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+        }
         
         .board-container {
             max-width: 560px;
@@ -145,6 +154,21 @@
             background: linear-gradient(145deg, #2a3140, #1e232c);
             box-shadow: 0 0 20px rgba(102,126,234,0.2);
         }
+        .player-card.connected {
+            border-left: 4px solid #2ecc71;
+        }
+        
+        .connection-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 100px;
+            font-size: 0.7em;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .badge-online { background: #2ecc71; color: white; }
+        .badge-offline { background: #7f8c8d; color: white; }
+        .badge-waiting { background: #f39c12; color: black; }
         
         .toast {
             position: fixed;
@@ -161,6 +185,9 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         .toast.show { transform: translateX(0); }
+        .toast.success { border-left-color: #2ecc71; }
+        .toast.error { border-left-color: #e74c3c; }
+        .toast.warning { border-left-color: #f39c12; }
         
         .debug-panel {
             margin-top: 20px;
@@ -185,6 +212,13 @@
             font-size: 0.8em;
             max-height: 150px;
             overflow-y: auto;
+        }
+        .room-status {
+            background: #2a3038;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+            color: white;
         }
     </style>
 </head>
@@ -216,30 +250,44 @@
                 <button id="saveNameBtn" class="btn btn-primary">Name speichern</button>
                 <button id="createRoomBtn" class="btn btn-primary" style="margin-top: 10px;">🌍 Öffentliches Spiel erstellen</button>
                 
-                <!-- DEBUG PANEL -->
-                <div class="debug-panel">
-                    <h4>🐞 DEBUG KONSOLE</h4>
-                    <div class="debug-log" id="debugLog">
-                        [System] Debug-Modus aktiv<br>
-                        [System] Klicke auf Figuren zum Bewegen<br>
+                <!-- Raum Status Anzeige -->
+                <div id="roomStatusCard" style="display: none; margin-top: 20px; background: #232931; padding: 15px; border-radius: 12px;">
+                    <h4 style="color: white; margin-bottom: 10px;">🎯 Aktueller Raum</h4>
+                    <div id="roomStatus" class="room-status">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span>Raum ID:</span>
+                            <span style="color: #a0b3ff;" id="roomIdDisplay">-</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+                            <span>Deine Farbe:</span>
+                            <span style="color: #2ecc71; font-weight: 600;" id="playerColorDisplay">-</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+                            <span>Gegner:</span>
+                            <span id="opponentDisplay" style="color: #8e9aaf;">Wartet...</span>
+                        </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-                        <button id="debugMoveE4Btn" class="btn btn-warning" style="margin-bottom: 0;">♙ e2->e4</button>
-                        <button id="debugMoveKnightBtn" class="btn btn-warning" style="margin-bottom: 0;">♘ g1->f3</button>
-                        <button id="debugClearSelectionBtn" class="btn" style="background: #7f8c8d; margin-bottom: 0;">🗑️ Auswahl löschen</button>
-                        <button id="debugShowMovesBtn" class="btn" style="background: #3498db; margin-bottom: 0;">👁️ Zeige alle Züge</button>
-                    </div>
+                    <button id="leaveRoomBtn" class="btn btn-danger" style="margin-top: 10px; margin-bottom: 0;">
+                        🚪 Raum verlassen
+                    </button>
                 </div>
                 
+                <!-- Verfügbare Spiele -->
                 <div style="margin-top: 20px;">
                     <h3 style="color: white; margin-bottom: 15px;">🟢 Verfügbare Spiele</h3>
                     <div id="lobbyList" style="max-height: 300px; overflow-y: auto;"></div>
                 </div>
                 
-                <div id="currentRoomCard" style="display: none; margin-top: 20px; background: #232931; padding: 15px; border-radius: 12px;">
-                    <h4 style="color: white; margin-bottom: 10px;">Aktueller Raum</h4>
-                    <div id="roomDetails" style="color: #a0b3ff; margin-bottom: 10px;"></div>
-                    <button id="leaveRoomBtn" class="btn btn-danger">Raum verlassen</button>
+                <!-- DEBUG PANEL -->
+                <div class="debug-panel">
+                    <h4>🐞 DEBUG KONSOLE</h4>
+                    <div class="debug-log" id="debugLog">
+                        [System] Debug-Modus aktiv<br>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+                        <button id="debugMoveE4Btn" class="btn btn-warning" style="margin-bottom: 0;">♙ e2->e4</button>
+                        <button id="debugMoveKnightBtn" class="btn btn-warning" style="margin-bottom: 0;">♘ g1->f3</button>
+                    </div>
                 </div>
             </div>
             
@@ -247,7 +295,7 @@
             <div style="background: #1e232a; border-radius: 20px; padding: 20px;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
                     <div style="background: rgba(102,126,234,0.15); padding: 8px 16px; border-radius: 100px;">
-                        🎯 <span id="roomIdDisplay">Kein Raum</span>
+                        🎯 <span id="gameRoomDisplay">Kein Raum</span>
                     </div>
                     <button id="resetGameBtn" class="btn" style="width: auto; padding: 8px 20px;">🔄 Neustart</button>
                 </div>
@@ -256,27 +304,35 @@
                     <div id="chessboard"></div>
                 </div>
                 
+                <!-- Player Cards mit Verbindungsstatus -->
                 <div style="display: flex; gap: 20px; margin-top: 20px;">
                     <div class="player-card" id="whiteCard">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <div style="font-size: 2em;">♔</div>
-                            <div>
-                                <div style="color: white; font-weight: 600;" id="whiteName">Weiß</div>
-                                <div style="color: #8e9aaf;" id="whiteStatus">Wartet...</div>
+                            <div style="flex: 1;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: white; font-weight: 600;" id="whiteName">Weiß</span>
+                                    <span id="whiteStatusBadge" class="connection-badge badge-waiting">⏳</span>
+                                </div>
+                                <div style="color: #8e9aaf; font-size: 0.8em;" id="whiteStatusText">Wartet...</div>
                             </div>
                         </div>
                     </div>
                     <div class="player-card" id="blackCard">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <div style="font-size: 2em;">♚</div>
-                            <div>
-                                <div style="color: white; font-weight: 600;" id="blackName">Schwarz</div>
-                                <div style="color: #8e9aaf;" id="blackStatus">Wartet...</div>
+                            <div style="flex: 1;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="color: white; font-weight: 600;" id="blackName">Schwarz</span>
+                                    <span id="blackStatusBadge" class="connection-badge badge-waiting">⏳</span>
+                                </div>
+                                <div style="color: #8e9aaf; font-size: 0.8em;" id="blackStatusText">Wartet...</div>
                             </div>
                         </div>
                     </div>
                 </div>
                 
+                <!-- Move History -->
                 <div style="margin-top: 20px; background: #232931; padding: 15px; border-radius: 12px;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                         <span style="color: white;">📜 Zugverlauf</span>
@@ -318,7 +374,7 @@
 
             log(message, type = 'info') {
                 const timestamp = new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'move' ? '🎯' : '🔍';
+                const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'move' ? '🎯' : type === 'room' ? '🏠' : '🔍';
                 const logMessage = `[${timestamp}] ${prefix} ${message}`;
                 
                 this.logs.push(logMessage);
@@ -337,7 +393,7 @@
         const debug = new DebugLogger();
 
         // =========================================
-        // SCHACH ENGINE - FIXED
+        // SCHACH ENGINE
         // =========================================
         class ChessEngine {
             constructor() {
@@ -398,7 +454,6 @@
                     case 'K': moves = this.getKingMoves(row, col, color); break;
                 }
 
-                // Filtere Züge, die den König im Schach lassen würden
                 return moves.filter(move => {
                     const newBoard = this.simulateMove(row, col, move.row, move.col);
                     return !this.isInCheck(color, newBoard);
@@ -410,17 +465,13 @@
                 const direction = color === 'w' ? -1 : 1;
                 const startRow = color === 'w' ? 6 : 1;
 
-                // Ein Schritt vorwärts
                 if (this.isInBounds(row + direction, col) && !this.board[row + direction][col]) {
                     moves.push({ row: row + direction, col });
-                    
-                    // Zwei Schritte vom Start
                     if (row === startRow && !this.board[row + 2 * direction][col]) {
                         moves.push({ row: row + 2 * direction, col });
                     }
                 }
 
-                // Schlagen diagonal
                 for (const dCol of [-1, 1]) {
                     const newRow = row + direction;
                     const newCol = col + dCol;
@@ -613,26 +664,20 @@
                 return false;
             }
 
-            // -------------------------
-            // MAKE MOVE - SIMPLE & ROBUST
-            // -------------------------
             makeMove(fromRow, fromCol, toRow, toCol) {
                 debug.log(`makeMove: (${fromRow},${fromCol}) -> (${toRow},${toCol})`, 'move');
                 
-                // Prüfe ob Figur existiert
                 const piece = this.board[fromRow][fromCol];
                 if (!piece) {
                     debug.log(`Keine Figur bei (${fromRow},${fromCol})`, 'error');
                     return { success: false, error: 'Keine Figur' };
                 }
                 
-                // Prüfe Farbe
                 if (this.getPieceColor(piece) !== this.currentPlayer) {
                     debug.log(`Falsche Farbe: ${this.getPieceColor(piece)} vs ${this.currentPlayer}`, 'error');
                     return { success: false, error: 'Nicht deine Figur' };
                 }
                 
-                // Prüfe gültigen Zug
                 const moves = this.getValidMoves(fromRow, fromCol);
                 const isValid = moves.some(m => m.row === toRow && m.col === toCol);
                 
@@ -641,28 +686,23 @@
                     return { success: false, error: 'Ungültiger Zug' };
                 }
                 
-                // Figur bewegen
                 const targetPiece = this.board[toRow][toCol];
                 
-                // Geschlagene Figur speichern
                 if (targetPiece) {
                     const capturedColor = this.getPieceColor(piece) === 'w' ? 'b' : 'w';
                     this.capturedPieces[capturedColor].push(targetPiece);
                     debug.log(`Figur geschlagen: ${targetPiece}`, 'success');
                 }
                 
-                // Bewegung ausführen
                 this.board[toRow][toCol] = piece;
                 this.board[fromRow][fromCol] = '';
                 debug.log(`Figur bewegt: ${piece} nach (${toRow},${toCol})`, 'success');
                 
-                // Bauernumwandlung
                 if (this.getPieceType(piece) === 'P' && (toRow === 0 || toRow === 7)) {
                     this.board[toRow][toCol] = this.getPieceColor(piece) === 'w' ? '♕' : '♛';
                     debug.log(`Bauernumwandlung zur Dame`, 'success');
                 }
                 
-                // Zugnotation
                 const cols = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
                 const rows = ['8', '7', '6', '5', '4', '3', '2', '1'];
                 let notation = '';
@@ -678,7 +718,6 @@
                 this.moveHistory.push(notation);
                 debug.log(`Zugnotation: ${notation}`, 'info');
                 
-                // Spieler wechseln
                 this.currentPlayer = this.currentPlayer === 'w' ? 'b' : 'w';
                 debug.log(`Spieler gewechselt: ${this.currentPlayer === 'w' ? 'Weiß' : 'Schwarz'}`, 'info');
                 
@@ -708,7 +747,7 @@
         }
 
         // =========================================
-        // GAME CONTROLLER
+        // GAME CONTROLLER - FIXED VERSION
         // =========================================
         class GameController {
             constructor() {
@@ -737,7 +776,7 @@
                         this.playerName = name;
                         localStorage.setItem('chess_name', name);
                         document.getElementById('playerNameDisplay').innerText = name;
-                        this.toast('✅ Name gespeichert');
+                        this.toast('✅ Name gespeichert', 'success');
                         debug.log(`Name gesetzt: ${name}`, 'success');
                     }
                 };
@@ -749,14 +788,13 @@
                 // DEBUG BUTTONS
                 document.getElementById('debugMoveE4Btn').onclick = () => {
                     if (!this.currentRoom) {
-                        this.toast('❌ Erst Raum erstellen!');
+                        this.toast('❌ Erst Raum erstellen!', 'error');
                         return;
                     }
                     if (this.game.currentPlayer !== this.playerColor) {
-                        this.toast('❌ Du bist nicht am Zug!');
+                        this.toast('❌ Du bist nicht am Zug!', 'error');
                         return;
                     }
-                    // Bauer von e2 (6,4) nach e4 (4,4)
                     const result = this.game.makeMove(6, 4, 4, 4);
                     if (result.success) {
                         this.isLocalMove = true;
@@ -765,24 +803,23 @@
                             lastUpdate: Date.now()
                         });
                         this.renderBoard();
-                        this.toast('✅ Bauer nach e4 bewegt!');
+                        this.toast('✅ Bauer nach e4 bewegt!', 'success');
                         debug.log('DEBUG: Bauer e2->e4 erfolgreich', 'success');
                     } else {
-                        this.toast(`❌ ${result.error}`);
+                        this.toast(`❌ ${result.error}`, 'error');
                         debug.log(`DEBUG Fehler: ${result.error}`, 'error');
                     }
                 };
                 
                 document.getElementById('debugMoveKnightBtn').onclick = () => {
                     if (!this.currentRoom) {
-                        this.toast('❌ Erst Raum erstellen!');
+                        this.toast('❌ Erst Raum erstellen!', 'error');
                         return;
                     }
                     if (this.game.currentPlayer !== this.playerColor) {
-                        this.toast('❌ Du bist nicht am Zug!');
+                        this.toast('❌ Du bist nicht am Zug!', 'error');
                         return;
                     }
-                    // Springer von g1 (7,6) nach f3 (5,5)
                     const result = this.game.makeMove(7, 6, 5, 5);
                     if (result.success) {
                         this.isLocalMove = true;
@@ -791,34 +828,14 @@
                             lastUpdate: Date.now()
                         });
                         this.renderBoard();
-                        this.toast('✅ Springer nach f3 bewegt!');
+                        this.toast('✅ Springer nach f3 bewegt!', 'success');
                         debug.log('DEBUG: Springer g1->f3 erfolgreich', 'success');
                     } else {
-                        this.toast(`❌ ${result.error}`);
+                        this.toast(`❌ ${result.error}`, 'error');
                         debug.log(`DEBUG Fehler: ${result.error}`, 'error');
                     }
                 };
                 
-                document.getElementById('debugClearSelectionBtn').onclick = () => {
-                    this.game.selectedPiece = null;
-                    this.game.validMoves = [];
-                    this.renderBoard();
-                    this.toast('🗑️ Auswahl gelöscht');
-                    debug.log('Auswahl zurückgesetzt', 'info');
-                };
-                
-                document.getElementById('debugShowMovesBtn').onclick = () => {
-                    if (this.game.selectedPiece) {
-                        debug.log(`Aktuelle gültige Züge:`, 'info');
-                        this.game.validMoves.forEach(m => {
-                            debug.log(`  → (${m.row},${m.col})`, 'info');
-                        });
-                    } else {
-                        debug.log('Keine Figur ausgewählt', 'info');
-                    }
-                };
-                
-                // Ping alle 1 Sekunde
                 setInterval(() => {
                     const start = Date.now();
                     db.ref('.info/serverTimeOffset').once('value').then(() => {
@@ -884,13 +901,15 @@
                 
                 let html = '';
                 Object.entries(rooms).forEach(([id, room]) => {
-                    if (room.isPublic === true && 
+                    // Prüfe ob Raum beitretbar ist
+                    const isJoinable = room.isPublic === true && 
                         room.players && 
                         room.players.w && 
                         (!room.players.b || room.players.b === null) &&
                         room.creatorId !== this.playerId &&
-                        id !== this.currentRoom) {
-                        
+                        id !== this.currentRoom;
+                    
+                    if (isJoinable) {
                         const timeAgo = Math.floor((Date.now() - (room.created || Date.now())) / 60000);
                         html += `
                             <div class="lobby-item">
@@ -908,9 +927,12 @@
                 list.innerHTML = html || '<div style="color: #8e9aaf; text-align: center; padding: 20px;">Keine offenen Spiele</div>';
             }
 
+            // ---------------------------------
+            // CREATE ROOM - FIXED
+            // ---------------------------------
             async createRoom() {
                 if (!this.playerName) {
-                    this.toast('❌ Bitte erst Namen eingeben!');
+                    this.toast('❌ Bitte erst Namen eingeben!', 'error');
                     return;
                 }
                 
@@ -928,7 +950,8 @@
                         w: {
                             id: this.playerId,
                             name: this.playerName,
-                            connected: true
+                            connected: true,
+                            joinedAt: Date.now()
                         },
                         b: null
                     },
@@ -940,110 +963,188 @@
                 await this.roomRef.set(roomData);
                 db.ref('presence/' + this.playerId).update({ currentRoom: roomId });
                 
-                document.getElementById('roomIdDisplay').innerText = roomId;
-                document.getElementById('currentRoomCard').style.display = 'block';
-                document.getElementById('roomDetails').innerHTML = `
-                    🌍 Öffentliches Spiel<br>
-                    ID: ${roomId}<br>
-                    Du: Weiß (${this.playerName})
-                `;
-                
-                document.getElementById('whiteName').innerHTML = `Weiß <span style="color: #2ecc71;">● ${this.playerName}</span>`;
-                document.getElementById('whiteStatus').innerText = 'Aktiv';
-                document.getElementById('blackName').innerText = 'Schwarz';
-                document.getElementById('blackStatus').innerText = 'Wartet...';
+                // UI sofort aktualisieren
+                this.updateRoomUI();
                 
                 this.setupRoomListener();
                 this.renderBoard();
-                this.toast('🌍 Spiel erstellt! Warte auf Gegner...');
+                this.toast('🌍 Spiel erstellt! Warte auf Gegner...', 'success');
                 debug.log(`Raum erstellt: ${roomId}`, 'success');
             }
 
+            // ---------------------------------
+            // JOIN ROOM - FIXED
+            // ---------------------------------
             async joinRoom(roomId) {
                 if (!this.playerName) {
-                    this.toast('❌ Bitte erst Namen eingeben!');
+                    this.toast('❌ Bitte erst Namen eingeben!', 'error');
                     return;
                 }
                 
+                debug.log(`Versuche Raum beizutreten: ${roomId}`, 'room');
+                
                 const roomRef = db.ref('rooms/' + roomId);
                 const snap = await roomRef.get();
+                
                 if (!snap.exists()) {
-                    this.toast('❌ Raum nicht gefunden!');
+                    this.toast('❌ Raum nicht gefunden!', 'error');
                     return;
                 }
                 
                 const room = snap.val();
+                
+                // Prüfe ob Platz frei
                 if (room.players && room.players.b && room.players.b !== null) {
-                    this.toast('❌ Dieser Raum ist bereits voll!');
+                    this.toast('❌ Dieser Raum ist bereits voll!', 'error');
+                    debug.log(`Raum ${roomId} ist bereits voll`, 'error');
                     return;
                 }
                 
+                // Raum beitreten
                 this.currentRoom = roomId;
                 this.playerColor = 'b';
                 this.roomRef = roomRef;
                 
+                // Board-State laden
                 this.game.loadState(room);
                 
+                // Spieler eintragen
                 await roomRef.update({
                     'players/b': {
                         id: this.playerId,
                         name: this.playerName,
-                        connected: true
+                        connected: true,
+                        joinedAt: Date.now()
                     },
                     lastUpdate: Date.now()
                 });
                 
+                // Presence updaten
                 db.ref('presence/' + this.playerId).update({ currentRoom: roomId });
                 
-                document.getElementById('roomIdDisplay').innerText = roomId;
-                document.getElementById('currentRoomCard').style.display = 'block';
-                document.getElementById('roomDetails').innerHTML = `
-                    🌍 Öffentliches Spiel<br>
-                    ID: ${roomId}<br>
-                    Du: Schwarz (${this.playerName})<br>
-                    Gegner: ${room.creatorName || 'Weiß'}
-                `;
+                // UI SOFORT aktualisieren
+                this.updateRoomUI();
                 
-                document.getElementById('whiteName').innerHTML = `Weiß <span style="color: #2ecc71;">● ${room.creatorName || 'Spieler'}</span>`;
-                document.getElementById('whiteStatus').innerText = 'Aktiv';
-                document.getElementById('blackName').innerHTML = `Schwarz <span style="color: #2ecc71;">● ${this.playerName}</span>`;
-                document.getElementById('blackStatus').innerText = 'Aktiv';
-                
+                // Listener einrichten
                 this.setupRoomListener();
+                
+                // Board neu zeichnen
                 this.renderBoard();
-                this.toast('✅ Raum beigetreten!');
-                debug.log(`Raum beigetreten: ${roomId}`, 'success');
+                
+                this.toast('✅ Raum beigetreten!', 'success');
+                debug.log(`Raum beigetreten: ${roomId} als Schwarz`, 'success');
             }
 
+            // ---------------------------------
+            // UPDATE ROOM UI - NEU!
+            // ---------------------------------
+            updateRoomUI() {
+                if (!this.currentRoom) return;
+                
+                // Raum-Status Card anzeigen
+                document.getElementById('roomStatusCard').style.display = 'block';
+                document.getElementById('roomIdDisplay').innerText = this.currentRoom;
+                document.getElementById('gameRoomDisplay').innerText = this.currentRoom;
+                document.getElementById('playerColorDisplay').innerText = this.playerColor === 'w' ? 'Weiß' : 'Schwarz';
+                
+                // Gegner-Status zurücksetzen
+                document.getElementById('opponentDisplay').innerHTML = '<span style="color: #f39c12;">⏳ Wartet auf Spieler...</span>';
+                
+                // Player Cards aktualisieren
+                if (this.playerColor === 'w') {
+                    document.getElementById('whiteName').innerHTML = `Weiß <span style="color: #2ecc71;">● ${this.playerName}</span>`;
+                    document.getElementById('whiteStatusBadge').className = 'connection-badge badge-online';
+                    document.getElementById('whiteStatusBadge').innerHTML = '● Online';
+                    document.getElementById('whiteStatusText').innerText = 'Aktiv';
+                    
+                    document.getElementById('blackName').innerHTML = 'Schwarz';
+                    document.getElementById('blackStatusBadge').className = 'connection-badge badge-waiting';
+                    document.getElementById('blackStatusBadge').innerHTML = '⏳ Wartet';
+                    document.getElementById('blackStatusText').innerText = 'Wartet auf Gegner...';
+                } else {
+                    document.getElementById('blackName').innerHTML = `Schwarz <span style="color: #2ecc71;">● ${this.playerName}</span>`;
+                    document.getElementById('blackStatusBadge').className = 'connection-badge badge-online';
+                    document.getElementById('blackStatusBadge').innerHTML = '● Online';
+                    document.getElementById('blackStatusText').innerText = 'Aktiv';
+                }
+            }
+
+            // ---------------------------------
+            // SETUP ROOM LISTENER - FIXED
+            // ---------------------------------
             setupRoomListener() {
                 if (!this.roomRef) return;
                 
                 this.roomRef.on('value', (snap) => {
                     if (!snap.exists()) {
-                        this.toast('🏁 Raum wurde geschlossen');
+                        this.toast('🏁 Raum wurde geschlossen', 'warning');
                         this.leaveRoom(true);
                         return;
                     }
                     
                     const data = snap.val();
+                    debug.log(`Raum-Update empfangen`, 'room');
                     
+                    // Board aktualisieren (nicht bei eigenem Move)
                     if (!this.isLocalMove) {
                         this.game.loadState(data);
                         this.renderBoard();
                     }
                     this.isLocalMove = false;
+                    
+                    // --- SPIELER-STATUS AKTUALISIEREN ---
+                    if (data.players) {
+                        // Weiß Status
+                        if (data.players.w) {
+                            const whiteName = data.players.w.name || 'Weiß';
+                            document.getElementById('whiteName').innerHTML = `Weiß <span style="color: #2ecc71;">● ${whiteName}</span>`;
+                            document.getElementById('whiteStatusBadge').className = 'connection-badge badge-online';
+                            document.getElementById('whiteStatusBadge').innerHTML = '● Online';
+                            document.getElementById('whiteStatusText').innerText = 'Aktiv';
+                        }
+                        
+                        // Schwarz Status
+                        if (data.players.b) {
+                            const blackName = data.players.b.name || 'Schwarz';
+                            document.getElementById('blackName').innerHTML = `Schwarz <span style="color: #2ecc71;">● ${blackName}</span>`;
+                            document.getElementById('blackStatusBadge').className = 'connection-badge badge-online';
+                            document.getElementById('blackStatusBadge').innerHTML = '● Online';
+                            document.getElementById('blackStatusText').innerText = 'Aktiv';
+                            
+                            // Gegner-Anzeige in Raum-Card
+                            if (this.playerColor === 'w') {
+                                document.getElementById('opponentDisplay').innerHTML = `<span style="color: #2ecc71;">● ${blackName}</span>`;
+                            } else {
+                                document.getElementById('opponentDisplay').innerHTML = `<span style="color: #2ecc71;">● ${data.players.w.name || 'Weiß'}</span>`;
+                            }
+                        } else {
+                            // Kein Schwarz - Wartezustand
+                            document.getElementById('blackName').innerHTML = 'Schwarz';
+                            document.getElementById('blackStatusBadge').className = 'connection-badge badge-waiting';
+                            document.getElementById('blackStatusBadge').innerHTML = '⏳ Wartet';
+                            document.getElementById('blackStatusText').innerText = 'Wartet auf Gegner...';
+                            document.getElementById('opponentDisplay').innerHTML = '<span style="color: #f39c12;">⏳ Wartet auf Spieler...</span>';
+                        }
+                    }
                 });
             }
 
+            // ---------------------------------
+            // LEAVE ROOM - FIXED
+            // ---------------------------------
             async leaveRoom(silent = false) {
+                debug.log('Verlasse Raum...', 'room');
+                
                 if (this.roomRef) {
                     if (this.playerColor === 'w') {
                         await this.roomRef.remove();
+                        debug.log('Raum als Ersteller gelöscht', 'success');
                     } else {
                         await this.roomRef.update({
                             'players/b': null,
                             lastUpdate: Date.now()
                         });
+                        debug.log('Als Schwarz Raum verlassen', 'success');
                     }
                     this.roomRef.off();
                 }
@@ -1055,25 +1156,41 @@
                 this.roomRef = null;
                 this.game.reset();
                 
-                document.getElementById('roomIdDisplay').innerText = 'Kein Raum';
-                document.getElementById('currentRoomCard').style.display = 'none';
+                // UI zurücksetzen
+                document.getElementById('roomStatusCard').style.display = 'none';
+                document.getElementById('gameRoomDisplay').innerText = 'Kein Raum';
+                
                 document.getElementById('whiteName').innerHTML = 'Weiß';
-                document.getElementById('whiteStatus').innerText = 'Wartet...';
+                document.getElementById('whiteStatusBadge').className = 'connection-badge badge-waiting';
+                document.getElementById('whiteStatusBadge').innerHTML = '⏳ Wartet';
+                document.getElementById('whiteStatusText').innerText = 'Wartet...';
+                
                 document.getElementById('blackName').innerHTML = 'Schwarz';
-                document.getElementById('blackStatus').innerText = 'Wartet...';
+                document.getElementById('blackStatusBadge').className = 'connection-badge badge-waiting';
+                document.getElementById('blackStatusBadge').innerHTML = '⏳ Wartet';
+                document.getElementById('blackStatusText').innerText = 'Wartet...';
                 
                 this.renderBoard();
-                if (!silent) this.toast('👋 Raum verlassen');
-                debug.log('Raum verlassen', 'info');
+                
+                if (!silent) {
+                    this.toast('👋 Raum verlassen', 'info');
+                }
+                
+                // Lobby aktualisieren
+                setTimeout(() => {
+                    db.ref('rooms').once('value').then((snap) => {
+                        this.updateLobby(snap.val());
+                    });
+                }, 500);
             }
 
             async resetGame() {
                 if (!this.currentRoom) {
-                    this.toast('❌ Kein Raum verbunden!');
+                    this.toast('❌ Kein Raum verbunden!', 'error');
                     return;
                 }
                 if (this.playerColor !== 'w') {
-                    this.toast('❌ Nur Weiß kann neustarten!');
+                    this.toast('❌ Nur Weiß kann neustarten!', 'error');
                     return;
                 }
                 
@@ -1085,7 +1202,7 @@
                     lastUpdate: Date.now()
                 });
                 
-                this.toast('✨ Neues Spiel gestartet!');
+                this.toast('✨ Neues Spiel gestartet!', 'success');
                 debug.log('Spiel zurückgesetzt', 'success');
             }
 
@@ -1135,56 +1252,53 @@
                 document.getElementById('blackCard').classList.toggle('active', this.game.currentPlayer === 'b');
             }
 
-            // -------------------------
-            // HANDLE SQUARE CLICK - FIXED
-            // -------------------------
             handleSquareClick(row, col) {
                 debug.log(`Klick auf (${row},${col})`, 'info');
                 
                 if (!this.currentRoom) {
-                    this.toast('🎮 Erst Raum erstellen/beitreten!');
+                    this.toast('🎮 Erst Raum erstellen/beitreten!', 'warning');
                     return;
                 }
                 
                 if (this.game.gameOver) {
-                    this.toast('🏁 Spiel beendet!');
+                    this.toast('🏁 Spiel beendet!', 'info');
                     return;
                 }
                 
-                // Prüfe Gegner asynchron
                 this.roomRef.once('value').then(async (snap) => {
                     const data = snap.val();
+                    
+                    // Prüfe Gegner
                     if (!data.players || !data.players.b) {
-                        this.toast('⏳ Warte auf Gegner...');
+                        this.toast('⏳ Warte auf Gegner...', 'warning');
                         return;
                     }
                     
-                    // Prüfe Spieler am Zug
+                    // Prüfe Zugrecht
                     if (this.game.currentPlayer !== this.playerColor) {
-                        this.toast('⏳ Du bist nicht am Zug!');
+                        this.toast('⏳ Du bist nicht am Zug!', 'warning');
                         return;
                     }
                     
                     const piece = this.game.board[row][col];
                     
-                    // --- FIGUR AUSWÄHLEN ---
+                    // Figur auswählen
                     if (!this.game.selectedPiece) {
                         if (piece && this.game.getPieceColor(piece) === this.playerColor) {
                             this.game.selectedPiece = { row, col };
                             this.game.validMoves = this.game.getValidMoves(row, col);
                             debug.log(`Figur ausgewählt: ${piece} bei (${row},${col})`, 'success');
-                            debug.log(`${this.game.validMoves.length} gültige Züge gefunden`, 'info');
+                            debug.log(`${this.game.validMoves.length} gültige Züge`, 'info');
                             this.renderBoard();
                         }
                         return;
                     }
                     
-                    // --- ZUG AUSFÜHREN ---
+                    // Zug ausführen
                     if (this.game.selectedPiece) {
                         const fromRow = this.game.selectedPiece.row;
                         const fromCol = this.game.selectedPiece.col;
                         
-                        // Auswahl aufheben
                         if (row === fromRow && col === fromCol) {
                             this.game.selectedPiece = null;
                             this.game.validMoves = [];
@@ -1193,44 +1307,35 @@
                             return;
                         }
                         
-                        // Prüfe ob Zug gültig
                         const isValidMove = this.game.validMoves.some(m => m.row === row && m.col === col);
                         
                         if (isValidMove) {
                             debug.log(`Versuche Zug: (${fromRow},${fromCol}) -> (${row},${col})`, 'move');
                             
-                            // Zug ausführen
                             const result = this.game.makeMove(fromRow, fromCol, row, col);
                             
                             if (result.success) {
                                 this.isLocalMove = true;
                                 
-                                // Firebase updaten
                                 await this.roomRef.update({
                                     ...this.game.getState(),
                                     lastUpdate: Date.now()
                                 });
                                 
-                                // Zurücksetzen
                                 this.game.selectedPiece = null;
                                 this.game.validMoves = [];
-                                
                                 this.renderBoard();
-                                debug.log('Zug erfolgreich ausgeführt!', 'success');
-                                
-                                if (result.gameOver) {
-                                    this.toast(result.result);
-                                }
+                                debug.log('Zug erfolgreich!', 'success');
                             } else {
                                 debug.log(`Zug fehlgeschlagen: ${result.error}`, 'error');
-                                this.toast(`❌ ${result.error}`);
+                                this.toast(`❌ ${result.error}`, 'error');
                                 this.game.selectedPiece = null;
                                 this.game.validMoves = [];
                                 this.renderBoard();
                             }
                         } else {
                             debug.log('Ungültiges Zielfeld', 'error');
-                            this.toast('❌ Ungültiger Zug');
+                            this.toast('❌ Ungültiger Zug', 'error');
                             this.game.selectedPiece = null;
                             this.game.validMoves = [];
                             this.renderBoard();
@@ -1239,10 +1344,11 @@
                 });
             }
 
-            toast(msg) {
-                debug.log(`Toast: ${msg}`, 'info');
+            toast(msg, type = 'info') {
+                debug.log(`Toast: ${msg}`, type);
                 const toast = document.getElementById('toast');
                 toast.innerText = msg;
+                toast.className = 'toast ' + type;
                 toast.classList.add('show');
                 setTimeout(() => toast.classList.remove('show'), 3000);
             }
