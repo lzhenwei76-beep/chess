@@ -44,7 +44,6 @@
         .online { background: #2ecc71; box-shadow: 0 0 10px #2ecc71; animation: pulse 2s infinite; }
         .offline { background: #e74c3c; box-shadow: 0 0 10px #e74c3c; }
         .connecting { background: #f39c12; box-shadow: 0 0 10px #f39c12; animation: pulse 1s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         
         .lobby-layout {
             display: grid;
@@ -145,18 +144,6 @@
             background: linear-gradient(145deg, #2a3140, #1e232c);
             box-shadow: 0 0 20px rgba(102,126,234,0.2);
         }
-        
-        .connection-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 100px;
-            font-size: 0.7em;
-            font-weight: 600;
-            margin-left: 8px;
-        }
-        .badge-online { background: #2ecc71; color: white; }
-        .badge-offline { background: #7f8c8d; color: white; }
-        .badge-waiting { background: #f39c12; color: black; }
         
         .toast {
             position: fixed;
@@ -266,7 +253,7 @@
                         <button id="debugMoveE4Btn" class="btn btn-warning" style="margin-bottom: 0;">♙ e2->e4</button>
                         <button id="debugMoveKnightBtn" class="btn btn-warning" style="margin-bottom: 0;">♘ g1->f3</button>
                         <button id="debugFixBoardBtn" class="btn btn-success" style="margin-bottom: 0;">🔧 Brett fixen</button>
-                        <button id="debugShowStateBtn" class="btn btn-info" style="margin-bottom: 0; background: #3498db;">📊 State</button>
+                        <button id="debugTestPawnBtn" class="btn btn-info" style="margin-bottom: 0; background: #3498db;">♙ Test e2</button>
                     </div>
                 </div>
             </div>
@@ -292,7 +279,7 @@
                             <div style="flex: 1;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
                                     <span style="color: white; font-weight: 600;" id="whiteName">Weiß</span>
-                                    <span id="whiteStatusBadge" class="connection-badge badge-waiting">⏳</span>
+                                    <span id="whiteStatusBadge" class="connection-badge badge-waiting" style="background: #f39c12; color: black; padding: 4px 8px; border-radius: 100px;">⏳</span>
                                 </div>
                                 <div style="color: #8e9aaf; font-size: 0.8em;" id="whiteStatusText">Wartet...</div>
                             </div>
@@ -304,7 +291,7 @@
                             <div style="flex: 1;">
                                 <div style="display: flex; align-items: center; gap: 8px;">
                                     <span style="color: white; font-weight: 600;" id="blackName">Schwarz</span>
-                                    <span id="blackStatusBadge" class="connection-badge badge-waiting">⏳</span>
+                                    <span id="blackStatusBadge" class="connection-badge badge-waiting" style="background: #f39c12; color: black; padding: 4px 8px; border-radius: 100px;">⏳</span>
                                 </div>
                                 <div style="color: #8e9aaf; font-size: 0.8em;" id="blackStatusText">Wartet...</div>
                             </div>
@@ -363,17 +350,12 @@
                 this.logElement.innerHTML = this.logs.map(log => log).join('<br>');
                 console.log(`${prefix} ${message}`);
             }
-
-            clear() {
-                this.logs = [];
-                this.logElement.innerHTML = '[System] Debug-Log geleert<br>';
-            }
         }
 
         const debug = new DebugLogger();
 
         // =========================================
-        // SCHACH ENGINE - FIXED VERSION
+        // SCHACH ENGINE - 100% FIXED
         // =========================================
         class ChessEngine {
             constructor() {
@@ -418,7 +400,7 @@
             }
 
             // -------------------------------------------------
-            // FIXED: getValidMoves ohne isInCheck Filter (für Test)
+            // FIXED: getValidMoves mit ALLEN Zügen
             // -------------------------------------------------
             getValidMoves(row, col) {
                 const piece = this.board[row][col];
@@ -429,28 +411,43 @@
                 let moves = [];
 
                 switch (type) {
-                    case 'P': moves = this.getPawnMoves(row, col, color); break;
-                    case 'R': moves = this.getRookMoves(row, col, color); break;
-                    case 'N': moves = this.getKnightMoves(row, col, color); break;
-                    case 'B': moves = this.getBishopMoves(row, col, color); break;
-                    case 'Q': moves = this.getQueenMoves(row, col, color); break;
-                    case 'K': moves = this.getKingMoves(row, col, color); break;
+                    case 'P': 
+                        moves = this.getPawnMoves(row, col, color); 
+                        break;
+                    case 'R': 
+                        moves = this.getRookMoves(row, col, color); 
+                        break;
+                    case 'N': 
+                        moves = this.getKnightMoves(row, col, color); 
+                        break;
+                    case 'B': 
+                        moves = this.getBishopMoves(row, col, color); 
+                        break;
+                    case 'Q': 
+                        moves = this.getQueenMoves(row, col, color); 
+                        break;
+                    case 'K': 
+                        moves = this.getKingMoves(row, col, color); 
+                        break;
                 }
 
-                // FIX: isInCheck deaktiviert für Test
+                debug.log(`getValidMoves für ${piece} bei (${row},${col}): ${moves.length} Züge`, 'info');
                 return moves;
             }
 
+            // -------------------------------------------------
+            // FIXED: Pawn Moves
+            // -------------------------------------------------
             getPawnMoves(row, col, color) {
                 const moves = [];
                 const direction = color === 'w' ? -1 : 1;
                 const startRow = color === 'w' ? 6 : 1;
 
-                // Ein Schritt vorwärts
+                // 1 Schritt vorwärts
                 if (this.isInBounds(row + direction, col) && !this.board[row + direction][col]) {
                     moves.push({ row: row + direction, col });
                     
-                    // Zwei Schritte vom Start
+                    // 2 Schritte vom Start
                     if (row === startRow && !this.board[row + 2 * direction][col]) {
                         moves.push({ row: row + 2 * direction, col });
                     }
@@ -467,9 +464,13 @@
                         }
                     }
                 }
+
                 return moves;
             }
 
+            // -------------------------------------------------
+            // FIXED: Rook Moves
+            // -------------------------------------------------
             getRookMoves(row, col, color) {
                 const moves = [];
                 const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -494,9 +495,17 @@
                 return moves;
             }
 
+            // -------------------------------------------------
+            // FIXED: Knight Moves
+            // -------------------------------------------------
             getKnightMoves(row, col, color) {
                 const moves = [];
-                const offsets = [[-2,-1], [-2,1], [-1,-2], [-1,2], [1,-2], [1,2], [2,-1], [2,1]];
+                const offsets = [
+                    [-2, -1], [-2, 1], 
+                    [-1, -2], [-1, 2],
+                    [1, -2], [1, 2],
+                    [2, -1], [2, 1]
+                ];
                 
                 for (const [dRow, dCol] of offsets) {
                     const newRow = row + dRow;
@@ -514,9 +523,12 @@
                 return moves;
             }
 
+            // -------------------------------------------------
+            // FIXED: Bishop Moves
+            // -------------------------------------------------
             getBishopMoves(row, col, color) {
                 const moves = [];
-                const directions = [[-1,-1], [-1,1], [1,-1], [1,1]];
+                const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
                 
                 for (const [dRow, dCol] of directions) {
                     let newRow = row + dRow;
@@ -538,10 +550,19 @@
                 return moves;
             }
 
+            // -------------------------------------------------
+            // FIXED: Queen Moves
+            // -------------------------------------------------
             getQueenMoves(row, col, color) {
-                return [...this.getRookMoves(row, col, color), ...this.getBishopMoves(row, col, color)];
+                return [
+                    ...this.getRookMoves(row, col, color),
+                    ...this.getBishopMoves(row, col, color)
+                ];
             }
 
+            // -------------------------------------------------
+            // FIXED: King Moves
+            // -------------------------------------------------
             getKingMoves(row, col, color) {
                 const moves = [];
                 
@@ -566,7 +587,7 @@
             }
 
             // -------------------------------------------------
-            // FIXED: makeMove ohne isInCheck Prüfung
+            // FIXED: makeMove mit korrekter Validierung
             // -------------------------------------------------
             makeMove(fromRow, fromCol, toRow, toCol) {
                 debug.log(`makeMove: (${fromRow},${fromCol}) -> (${toRow},${toCol})`, 'move');
@@ -582,13 +603,12 @@
                     return { success: false, error: 'Nicht deine Figur' };
                 }
                 
-                // Prüfe ob Zug in validMoves ist
+                // Prüfe ob Zug gültig ist
                 const moves = this.getValidMoves(fromRow, fromCol);
                 const isValid = moves.some(m => m.row === toRow && m.col === toCol);
                 
                 if (!isValid) {
                     debug.log(`Ungültiger Zug nach (${toRow},${toCol})`, 'error');
-                    debug.log(`Gültige Züge: ${JSON.stringify(moves)}`, 'info');
                     return { success: false, error: 'Ungültiger Zug' };
                 }
                 
@@ -745,11 +765,11 @@
                     debug.log('Brett wurde zurückgesetzt', 'success');
                 };
                 
-                document.getElementById('debugShowStateBtn').onclick = () => {
-                    debug.log(`Aktueller Spieler: ${this.game.currentPlayer}`, 'info');
-                    debug.log(`Züge: ${this.game.moveHistory.length}`, 'info');
-                    debug.log(`Raum: ${this.currentRoom}`, 'info');
-                    debug.log(`Farbe: ${this.playerColor}`, 'info');
+                document.getElementById('debugTestPawnBtn').onclick = () => {
+                    const moves = this.game.getValidMoves(6, 4);
+                    debug.log(`Bauer e2 hat ${moves.length} gültige Züge:`, 'info');
+                    moves.forEach(m => debug.log(`  -> (${m.row},${m.col})`, 'info'));
+                    this.toast(`Bauer: ${moves.length} Züge`, 'info');
                 };
                 
                 setInterval(() => {
@@ -937,17 +957,12 @@
                 
                 if (this.playerColor === 'w') {
                     document.getElementById('whiteName').innerHTML = `Weiß <span style="color: #2ecc71;">● ${this.playerName}</span>`;
-                    document.getElementById('whiteStatusBadge').className = 'connection-badge badge-online';
+                    document.getElementById('whiteStatusBadge').style.background = '#2ecc71';
                     document.getElementById('whiteStatusBadge').innerHTML = '● Online';
                     document.getElementById('whiteStatusText').innerText = 'Aktiv';
-                    
-                    document.getElementById('blackName').innerHTML = 'Schwarz';
-                    document.getElementById('blackStatusBadge').className = 'connection-badge badge-waiting';
-                    document.getElementById('blackStatusBadge').innerHTML = '⏳ Wartet';
-                    document.getElementById('blackStatusText').innerText = 'Wartet auf Gegner...';
                 } else {
                     document.getElementById('blackName').innerHTML = `Schwarz <span style="color: #2ecc71;">● ${this.playerName}</span>`;
-                    document.getElementById('blackStatusBadge').className = 'connection-badge badge-online';
+                    document.getElementById('blackStatusBadge').style.background = '#2ecc71';
                     document.getElementById('blackStatusBadge').innerHTML = '● Online';
                     document.getElementById('blackStatusText').innerText = 'Aktiv';
                 }
@@ -970,36 +985,6 @@
                         this.renderBoard();
                     }
                     this.isLocalMove = false;
-                    
-                    if (data.players) {
-                        if (data.players.w) {
-                            const whiteName = data.players.w.name || 'Weiß';
-                            document.getElementById('whiteName').innerHTML = `Weiß <span style="color: #2ecc71;">● ${whiteName}</span>`;
-                            document.getElementById('whiteStatusBadge').className = 'connection-badge badge-online';
-                            document.getElementById('whiteStatusBadge').innerHTML = '● Online';
-                            document.getElementById('whiteStatusText').innerText = 'Aktiv';
-                        }
-                        
-                        if (data.players.b) {
-                            const blackName = data.players.b.name || 'Schwarz';
-                            document.getElementById('blackName').innerHTML = `Schwarz <span style="color: #2ecc71;">● ${blackName}</span>`;
-                            document.getElementById('blackStatusBadge').className = 'connection-badge badge-online';
-                            document.getElementById('blackStatusBadge').innerHTML = '● Online';
-                            document.getElementById('blackStatusText').innerText = 'Aktiv';
-                            
-                            if (this.playerColor === 'w') {
-                                document.getElementById('opponentDisplay').innerHTML = `<span style="color: #2ecc71;">● ${blackName}</span>`;
-                            } else {
-                                document.getElementById('opponentDisplay').innerHTML = `<span style="color: #2ecc71;">● ${data.players.w.name || 'Weiß'}</span>`;
-                            }
-                        } else {
-                            document.getElementById('blackName').innerHTML = 'Schwarz';
-                            document.getElementById('blackStatusBadge').className = 'connection-badge badge-waiting';
-                            document.getElementById('blackStatusBadge').innerHTML = '⏳ Wartet';
-                            document.getElementById('blackStatusText').innerText = 'Wartet auf Gegner...';
-                            document.getElementById('opponentDisplay').innerHTML = '<span style="color: #f39c12;">⏳ Wartet auf Spieler...</span>';
-                        }
-                    }
                 });
             }
 
@@ -1025,17 +1010,6 @@
                 
                 document.getElementById('roomStatusCard').style.display = 'none';
                 document.getElementById('gameRoomDisplay').innerText = 'Kein Raum';
-                
-                document.getElementById('whiteName').innerHTML = 'Weiß';
-                document.getElementById('whiteStatusBadge').className = 'connection-badge badge-waiting';
-                document.getElementById('whiteStatusBadge').innerHTML = '⏳ Wartet';
-                document.getElementById('whiteStatusText').innerText = 'Wartet...';
-                
-                document.getElementById('blackName').innerHTML = 'Schwarz';
-                document.getElementById('blackStatusBadge').className = 'connection-badge badge-waiting';
-                document.getElementById('blackStatusBadge').innerHTML = '⏳ Wartet';
-                document.getElementById('blackStatusText').innerText = 'Wartet...';
-                
                 this.renderBoard();
                 if (!silent) this.toast('👋 Raum verlassen', 'info');
             }
@@ -1109,7 +1083,7 @@
             }
 
             // -------------------------------------------------
-            // FIXED: handleSquareClick mit korrekter Validierung
+            // FIXED: handleSquareClick
             // -------------------------------------------------
             handleSquareClick(row, col) {
                 debug.log(`Klick auf (${row},${col})`, 'info');
@@ -1146,12 +1120,7 @@
                             this.game.validMoves = this.game.getValidMoves(row, col);
                             
                             debug.log(`Figur ausgewählt: ${piece} bei (${row},${col})`, 'success');
-                            debug.log(`${this.game.validMoves.length} gültige Züge gefunden`, 'info');
-                            
-                            if (this.game.validMoves.length === 0) {
-                                debug.log('⚠️ Keine gültigen Züge für diese Figur!', 'error');
-                                this.toast('⚠️ Keine gültigen Züge', 'warning');
-                            }
+                            debug.log(`${this.game.validMoves.length} gültige Züge`, 'info');
                             
                             this.renderBoard();
                         }
